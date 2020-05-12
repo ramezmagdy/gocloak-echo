@@ -18,6 +18,14 @@ type Refresh struct {
 	RefreshToken string `json:"refreshToken,omitempty"`
 }
 
+type Permission struct {
+	Token        string
+	Realm        string
+	Audience     string
+	Permissions  []string
+	ResponseMode string
+}
+
 // JWT is a JWT
 type JWT struct {
 	AccessToken      string `json:"accessToken"`

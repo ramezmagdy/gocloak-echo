@@ -20,4 +20,5 @@ type AuthenticationMiddleWare interface {
 	CheckTokenCustomHeader(next echo.HandlerFunc) echo.HandlerFunc
 	CheckScope(next echo.HandlerFunc) echo.HandlerFunc
 	Enforcer(requestData Permission) echo.MiddlewareFunc
+	Protect() echo.MiddlewareFunc
 }

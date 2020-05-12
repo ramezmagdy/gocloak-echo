@@ -22,8 +22,8 @@ func NewDirectGrantMiddleware(gocloak gocloak.GoCloak, realm string, clientID st
 		gocloak:          gocloak,
 		realm:            realm,
 		clientID:         clientID,
-		clientSecret:     *clientSecret,
-		allowedScope:     *allowedScope,
+		clientSecret:     clientSecret,
+		allowedScope:     allowedScope,
 		customHeaderName: customHeaderName,
 	}
 }
@@ -32,8 +32,8 @@ type directGrantMiddleware struct {
 	gocloak          gocloak.GoCloak
 	realm            string
 	clientID         string
-	clientSecret     string
-	allowedScope     string
+	clientSecret     *string
+	allowedScope     *string
 	customHeaderName *string
 }
 
@@ -141,7 +141,7 @@ func (auth *directGrantMiddleware) CheckToken(next echo.HandlerFunc) echo.Handle
 				Message: "Bearer Token missing",
 			})
 		}
-		result, err := auth.gocloak.RetrospectToken(token, auth.clientID, auth.clientSecret, auth.realm)
+		result, err := auth.gocloak.RetrospectToken(token, auth.clientID, *auth.clientSecret, auth.realm)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, gocloak.APIError{
 				Code:    403,
@@ -192,7 +192,7 @@ func (auth *directGrantMiddleware) CheckScope(next echo.HandlerFunc) echo.Handle
 			})
 		}
 
-		if !strings.Contains(claims.Scope, auth.allowedScope) {
+		if !strings.Contains(claims.Scope, *auth.allowedScope) {
 			return c.JSON(http.StatusForbidden, gocloak.APIError{
 				Code:    http.StatusForbidden,
 				Message: "Insufficient permissions to access the requested resource",
@@ -251,6 +251,54 @@ func (auth *directGrantMiddleware) Enforcer(requestData Permission) echo.Middlew
 			//		Message: "Invalid or expired Token",
 			//	})
 			//}
+
+			return next(c)
+		}
+	}
+}
+
+func (auth *directGrantMiddleware) Protect() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			token := ""
+			if auth.customHeaderName != nil {
+				token = c.Request().Header.Get(*auth.customHeaderName)
+			}
+
+			if token == "" {
+				token = c.Request().Header.Get("Authorization")
+			}
+
+			if token == "" {
+				return c.JSON(http.StatusUnauthorized, gocloak.APIError{
+					Code:    403,
+					Message: "Authorization header missing",
+				})
+			}
+
+			token = extractBearerToken(token)
+
+			if token == "" {
+				return c.JSON(http.StatusUnauthorized, gocloak.APIError{
+					Code:    403,
+					Message: "Bearer Token missing",
+				})
+			}
+			decodedToken, _, err := auth.gocloak.DecodeAccessToken(token, auth.realm)
+			if err != nil {
+				log.Println("Invalid or malformed token:" + err.Error())
+				return c.JSON(http.StatusUnauthorized, gocloak.APIError{
+					Code:    403,
+					Message: "Invalid or expired Token",
+				})
+			}
+
+			if !decodedToken.Valid {
+				return c.JSON(http.StatusUnauthorized, gocloak.APIError{
+					Code:    403,
+					Message: "Invalid or expired Token",
+				})
+			}
 
 			return next(c)
 		}

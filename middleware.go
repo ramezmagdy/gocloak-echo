@@ -19,6 +19,6 @@ type AuthenticationMiddleWare interface {
 	// The following 2 methods need higher permissions of the client in the realm
 	CheckTokenCustomHeader(next echo.HandlerFunc) echo.HandlerFunc
 	CheckScope(next echo.HandlerFunc) echo.HandlerFunc
-	Enforcer(requestData Permission) echo.MiddlewareFunc
+	Enforcer(requestData EnforcerConfig) echo.MiddlewareFunc
 	Protect() echo.MiddlewareFunc
 }

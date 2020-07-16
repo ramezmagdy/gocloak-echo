@@ -265,7 +265,8 @@ func (auth *directGrantMiddleware) Enforcer(requestConfig EnforcerConfig) echo.M
 				return auth.accessDenied(c, "Invalid or expired Token")
 			}
 
-			c.Set("auth", decodedTokenClaim)
+			user, _ := auth.gocloak.GetUserInfo(token, auth.realm)
+			c.Set("user", user)
 
 			return next(c)
 		}
@@ -314,8 +315,8 @@ func (auth *directGrantMiddleware) Protect() echo.MiddlewareFunc {
 					Message: "Invalid or expired Token",
 				})
 			}
-
-			c.Set("auth", decodedToken)
+			user, _ := auth.gocloak.GetUserInfo(token, auth.realm)
+			c.Set("user", user)
 
 			return next(c)
 		}

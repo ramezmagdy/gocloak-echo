@@ -255,7 +255,7 @@ func (auth *directGrantMiddleware) Enforcer(requestConfig EnforcerConfig) echo.M
 			}
 
 			if grant == nil || grant.AccessToken == "" {
-				log.Println("Invalid or malformed token:" + err.Error())
+				log.Println("Invalid or malformed token null grant")
 				return auth.accessDenied(c, "Invalid or expired Token")
 			}
 
@@ -264,6 +264,8 @@ func (auth *directGrantMiddleware) Enforcer(requestConfig EnforcerConfig) echo.M
 			if permissionResult != true {
 				return auth.accessDenied(c, "Invalid or expired Token")
 			}
+
+			c.Set("auth", decodedTokenClaim)
 
 			return next(c)
 		}
@@ -312,6 +314,8 @@ func (auth *directGrantMiddleware) Protect() echo.MiddlewareFunc {
 					Message: "Invalid or expired Token",
 				})
 			}
+
+			c.Set("auth", decodedToken)
 
 			return next(c)
 		}

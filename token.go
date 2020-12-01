@@ -23,10 +23,17 @@ type Refresh struct {
 	RefreshToken string `json:"refreshToken,omitempty"`
 }
 
+type RequestModeEnum string
+
+const (
+	PermissionRequestMode RequestModeEnum = "permission"
+	DecisionRequestMode   RequestModeEnum = "decision"
+)
+
 type EnforcerConfig struct {
 	Audience     string
 	Permissions  *[]string
-	ResponseMode string
+	ResponseMode *RequestModeEnum
 }
 
 // JWT is a JWT
@@ -116,4 +123,16 @@ func Contains(a []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// APIError holds message and statusCode for api errors
+type APICustomError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Result  string `json:"result"`
+}
+
+// Error stringifies the APIError
+func (apiError APICustomError) Error() string {
+	return apiError.Message
 }

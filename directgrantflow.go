@@ -226,20 +226,38 @@ func (auth *directGrantMiddleware) Enforcer(requestConfig EnforcerConfig) echo.M
 			}
 
 			if token == "" {
-				return auth.accessDenied(c, "Authorization header missing")
+				return auth.accessDenied(c, "missing_authorization_token")
 			}
 
 			token = extractBearerToken(token)
 
 			if token == "" {
-				return auth.accessDenied(c, "Bearer Token missing")
+				return auth.accessDenied(c, "invalid_bearer_token")
 			}
 
-			//if requestConfig.ResponseMode == "" {
-			//	responseMode = "permissions"
-			//} else {
-			//	responseMode = requestConfig.ResponseMode
-			//}
+			result, err := auth.gocloak.RetrospectToken(auth.ctx, token, auth.clientID, auth.clientSecret, auth.realm)
+			if err != nil {
+				return auth.accessDenied(c, err.Error())
+			}
+
+			if !*result.Active {
+				return auth.accessDenied(c, "user_not_authenticated")
+			}
+
+			defaultRequestMode := PermissionRequestMode
+			if requestConfig.ResponseMode == nil {
+				requestConfig.ResponseMode = &defaultRequestMode
+			}
+
+			permissions, err := auth.gocloak.GetRequestingPartyPermissions(auth.ctx, token, auth.realm, gocloak.RequestingPartyTokenOptions{
+				Permissions:  requestConfig.Permissions,
+				Audience:     gocloak.StringP(requestConfig.Audience),
+				ResponseMode: gocloak.StringP(string(*requestConfig.ResponseMode)),
+			})
+			if err != nil {
+				return auth.permissionDenied(c, err.Error())
+			}
+			log.Println(permissions)
 
 			//var tokenClaim jwt.Claims
 			//decodedTokenClaim, err := auth.gocloak.DecodeAccessTokenCustomClaims(auth.ctx, token, auth.realm, requestConfig.Audience, tokenClaim)
@@ -279,50 +297,6 @@ func (auth *directGrantMiddleware) Enforcer(requestConfig EnforcerConfig) echo.M
 
 func (auth *directGrantMiddleware) Protect(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		//token := ""
-		//if auth.customHeaderName != nil {
-		//	token = c.Request().Header.Get(*auth.customHeaderName)
-		//}
-		//
-		//if token == "" {
-		//	token = c.Request().Header.Get("Authorization")
-		//}
-		//
-		//if token == "" {
-		//	return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-		//		Code:    403,
-		//		Message: "Authorization header missing",
-		//	})
-		//}
-		//
-		//token = extractBearerToken(token)
-		//
-		//if token == "" {
-		//	return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-		//		Code:    403,
-		//		Message: "Bearer Token missing",
-		//	})
-		//}
-		//
-		//decodedToken, _, err := auth.gocloak.DecodeAccessToken(auth.ctx, token, auth.realm, auth.clientID)
-		//if err != nil {
-		//	log.Println("Invalid or malformed token:" + err.Error())
-		//	return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-		//		Code:    403,
-		//		Message: "Invalid or expired Token",
-		//	})
-		//}
-		//
-		//if !decodedToken.Valid {
-		//	return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-		//		Code:    403,
-		//		Message: "Invalid or expired Token",
-		//	})
-		//}
-		//user, _ := auth.gocloak.GetUserInfo(auth.ctx, token, auth.realm)
-		//c.Set("user", user)
-		//
-		//return next(c)
 		token := ""
 		if auth.customHeaderName != nil {
 			token = c.Request().Header.Get(*auth.customHeaderName)
@@ -333,84 +307,83 @@ func (auth *directGrantMiddleware) Protect(next echo.HandlerFunc) echo.HandlerFu
 		}
 
 		if token == "" {
-			return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-				Code:    403,
-				Message: "Authorization header missing",
-			})
+			return auth.accessDenied(c, "missing_authorization_token")
 		}
 
 		token = extractBearerToken(token)
 
 		if token == "" {
-			return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-				Code:    403,
-				Message: "Bearer Token missing",
-			})
+			return auth.accessDenied(c, "invalid_bearer_token")
 		}
 
 		result, err := auth.gocloak.RetrospectToken(auth.ctx, token, auth.clientID, auth.clientSecret, auth.realm)
 		if err != nil {
-			return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-				Code:    403,
-				Message: "Invalid or malformed token:" + err.Error(),
-			})
+			return auth.accessDenied(c, "user_not_authenticated")
 		}
 
 		if !*result.Active {
-			return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-				Code:    403,
-				Message: "Invalid or expired Token",
-			})
+			return auth.accessDenied(c, "user_not_active")
 		}
+
+		user, _ := auth.gocloak.GetUserInfo(auth.ctx, token, auth.realm)
+		c.Set("user", user)
 
 		return next(c)
 	}
 }
 
-func (auth *directGrantMiddleware) handlePermissions(requestPermissions *[]string, grant *gocloak.JWT, responseMode string, decodedClaim *jwt.Token, claims jwt.Claims) bool {
-	var expectedPermissions []PermissionClaim
-
-	for _, permission := range *requestPermissions {
-		s := strings.Split(permission, "#")
-		p := PermissionClaim{
-			s[0],
-			"",
-		}
-		if len(s) > 1 {
-			p.scope = s[1]
-		}
-		expectedPermissions = append(expectedPermissions, p)
-	}
-	log.Println(expectedPermissions)
-
-	//if responseMode == "permissions" || responseMode == "decision" {
-	//	if claims.Authorization.Permissions == nil || len(claims.Authorization.Permissions) <= 0 {
-	//		return false
-	//	} else {
-	//		for _, scope := range expectedPermissions {
-	//			for _, permission := range claims.Authorization.Permissions {
-	//				log.Println(permission)
-	//				if permission.Contains(scope.Id, scope.scope) == false {
-	//					return false
-	//				}
-	//			}
-	//		}
-	//	}
-	//} else {
-	//	for _, scope := range expectedPermissions {
-	//		if scope.Id != "" && scope.scope != "" {
-	//			if claims.HasPermission(scope.Id, scope.scope) != true {
-	//				return false
-	//			}
-	//		}
-	//	}
-	//}
-	return true
-}
+//func (auth *directGrantMiddleware) handlePermissions(requestPermissions *[]string, grant *gocloak.JWT, responseMode string, decodedClaim *jwt.Token, claims jwt.Claims) bool {
+//	var expectedPermissions []PermissionClaim
+//
+//	for _, permission := range *requestPermissions {
+//		s := strings.Split(permission, "#")
+//		p := PermissionClaim{
+//			s[0],
+//			"",
+//		}
+//		if len(s) > 1 {
+//			p.scope = s[1]
+//		}
+//		expectedPermissions = append(expectedPermissions, p)
+//	}
+//	log.Println(expectedPermissions)
+//
+//	//if responseMode == "permissions" || responseMode == "decision" {
+//	//	if claims.Authorization.Permissions == nil || len(claims.Authorization.Permissions) <= 0 {
+//	//		return false
+//	//	} else {
+//	//		for _, scope := range expectedPermissions {
+//	//			for _, permission := range claims.Authorization.Permissions {
+//	//				log.Println(permission)
+//	//				if permission.Contains(scope.Id, scope.scope) == false {
+//	//					return false
+//	//				}
+//	//			}
+//	//		}
+//	//	}
+//	//} else {
+//	//	for _, scope := range expectedPermissions {
+//	//		if scope.Id != "" && scope.scope != "" {
+//	//			if claims.HasPermission(scope.Id, scope.scope) != true {
+//	//				return false
+//	//			}
+//	//		}
+//	//	}
+//	//}
+//	return true
+//}
 
 func (auth *directGrantMiddleware) accessDenied(c echo.Context, message string) error {
-	return c.JSON(http.StatusUnauthorized, gocloak.APIError{
-		Code:    403,
-		Message: message,
+	return c.JSON(http.StatusUnauthorized, APICustomError{
+		Code:    4011,
+		Message: "UNAUTHORIZED",
+		Result:  message,
+	})
+}
+func (auth *directGrantMiddleware) permissionDenied(c echo.Context, message string) error {
+	return c.JSON(http.StatusForbidden, APICustomError{
+		Code:    4031,
+		Message: "PERMISSION_DENIED",
+		Result:  message,
 	})
 }

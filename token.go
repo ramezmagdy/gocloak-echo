@@ -1,7 +1,7 @@
 package gocloakecho
 
 import (
-	"github.com/Nerzal/gocloak/v5/pkg/jwx"
+	"github.com/Nerzal/gocloak/v7/pkg/jwx"
 	"github.com/dgrijalva/jwt-go"
 )
 
@@ -25,7 +25,7 @@ type Refresh struct {
 
 type EnforcerConfig struct {
 	Audience     string
-	Permissions  []string
+	Permissions  *[]string
 	ResponseMode string
 }
 
